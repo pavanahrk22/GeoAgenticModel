@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { WS_BASE_URL } from '../config';
 
 export function useWebSocket(tripId) {
   const [isConnected, setIsConnected] = useState(false);
@@ -21,7 +22,7 @@ export function useWebSocket(tripId) {
       wsRef.current.close();
     }
 
-    const wsUrl = `ws://localhost:8000/stream/${tripId}`;
+    const wsUrl = `${WS_BASE_URL}/stream/${tripId}`;
     const ws = new WebSocket(wsUrl);
 
     ws.onopen = () => {
