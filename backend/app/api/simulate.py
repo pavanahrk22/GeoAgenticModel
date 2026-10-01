@@ -22,6 +22,31 @@ router = APIRouter()
 class SimulationController:
     def __init__(self):
         self.active_tasks: dict[str, asyncio.Task] = {}
+        self.pending_routes: dict[str, list[list[float]]] = {}
+
+    def set_pending_route(self, trip_id: str, geometry: list[list[float]]):
+        self.pending_routes[trip_id] = geometry
+
+    @staticmethod
+    def _splice_route(current_lat: float, current_lng: float, new_geometry: list[list[float]]) -> list[list[float]]:
+        if not new_geometry or len(new_geometry) < 2:
+            return new_geometry
+        best_idx = 0
+        best_dist = float("inf")
+        for idx, pt in enumerate(new_geometry):
+            d = (pt[0] - current_lat) ** 2 + (pt[1] - current_lng) ** 2
+            if d < best_dist:
+                best_dist = d
+                best_idx = idx
+
+        remaining = new_geometry[best_idx:]
+        if remaining and (remaining[0][0] - current_lat) ** 2 + (remaining[0][1] - current_lng) ** 2 < 1e-8:
+            remaining = remaining[1:]
+
+        if not remaining:
+            return [[current_lat, current_lng], new_geometry[-1]]
+
+        return [[current_lat, current_lng]] + remaining
 
     async def run_simulation(self, trip_id: str):
         """Walk along the planned route, emitting GPS pings processed through the orchestrator."""
@@ -57,14 +82,14 @@ class SimulationController:
 
         try:
             base_speed_kmh = 40.0
-            total_points = len(route_coords)
+            current_idx = 0
 
-            for i in range(total_points - 1):
+            while current_idx < len(route_coords) - 1:
                 if trip_id not in self.active_tasks:
                     break
 
-                start = route_coords[i]
-                end = route_coords[i + 1]
+                start = route_coords[current_idx]
+                end = route_coords[current_idx + 1]
 
                 # Calculate segment distance and steps
                 dlat = end[0] - start[0]
@@ -78,6 +103,7 @@ class SimulationController:
 
                 heading = math.degrees(math.atan2(dlng, dlat)) % 360
 
+                route_switched = False
                 for step in range(steps):
                     if trip_id not in self.active_tasks:
                         break
@@ -86,6 +112,16 @@ class SimulationController:
                     lat = start[0] + dlat * frac + random.uniform(-0.00003, 0.00003)
                     lng = start[1] + dlng * frac + random.uniform(-0.00003, 0.00003)
                     speed = base_speed_kmh + random.uniform(-5, 5)
+
+                    # Check if user selected a new route dynamically
+                    if trip_id in self.pending_routes:
+                        new_geom = self.pending_routes.pop(trip_id, None)
+                        if new_geom and len(new_geom) >= 2:
+                            route_coords = self._splice_route(lat, lng, new_geom)
+                            current_idx = 0
+                            route_switched = True
+                            logger.info(f"Trip {trip_id} switched route dynamically ({len(route_coords)} waypoints)")
+                            break
 
                     # Process through orchestrator with a fresh DB session
                     async with AsyncSessionLocal() as db:
@@ -96,6 +132,9 @@ class SimulationController:
                             await manager.broadcast_to_trip(trip_id, msg)
 
                     await asyncio.sleep(tick)
+
+                if not route_switched:
+                    current_idx += 1
 
             # Trip completed
             async with AsyncSessionLocal() as db:
@@ -117,6 +156,7 @@ class SimulationController:
             logger.error(f"Simulation error for trip {trip_id}: {e}", exc_info=True)
         finally:
             self.active_tasks.pop(trip_id, None)
+            self.pending_routes.pop(trip_id, None)
             orchestrator.cleanup_trip(trip_id)
 
     async def run_demo_scenario(self, trip_id: str):
@@ -158,13 +198,14 @@ class SimulationController:
             incident_point_idx = int(total_points * 0.4)
             incident_injected = False
             incident_id = None
+            current_idx = 0
 
-            for i in range(total_points - 1):
+            while current_idx < len(route_coords) - 1:
                 if trip_id not in self.active_tasks:
                     break
 
-                start = route_coords[i]
-                end = route_coords[i + 1]
+                start = route_coords[current_idx]
+                end = route_coords[current_idx + 1]
                 dlat = end[0] - start[0]
                 dlng = end[1] - start[1]
                 seg_dist_deg = math.sqrt(dlat**2 + dlng**2)
@@ -175,7 +216,7 @@ class SimulationController:
                 heading = math.degrees(math.atan2(dlng, dlat)) % 360
 
                 # Phase 2: Inject incident ahead
-                if i >= phase1_end and not incident_injected and incident_point_idx < total_points:
+                if current_idx >= phase1_end and not incident_injected and incident_point_idx < total_points:
                     inc_point = route_coords[incident_point_idx]
                     async with AsyncSessionLocal() as db:
                         from app.models import Incident as IncidentModel, IncidentType, IncidentSeverity
@@ -205,6 +246,7 @@ class SimulationController:
                     incident_injected = True
                     logger.info(f"Demo: Accident injected at waypoint {incident_point_idx}")
 
+                route_switched = False
                 for step in range(steps):
                     if trip_id not in self.active_tasks:
                         break
@@ -212,6 +254,16 @@ class SimulationController:
                     lat = start[0] + dlat * frac + random.uniform(-0.00003, 0.00003)
                     lng = start[1] + dlng * frac + random.uniform(-0.00003, 0.00003)
                     speed = base_speed_kmh + random.uniform(-5, 5)
+
+                    # Check if user selected a new route dynamically
+                    if trip_id in self.pending_routes:
+                        new_geom = self.pending_routes.pop(trip_id, None)
+                        if new_geom and len(new_geom) >= 2:
+                            route_coords = self._splice_route(lat, lng, new_geom)
+                            current_idx = 0
+                            route_switched = True
+                            logger.info(f"Demo scenario: Trip {trip_id} switched route dynamically ({len(route_coords)} waypoints)")
+                            break
 
                     async with AsyncSessionLocal() as db:
                         ws_messages = await orchestrator.process_gps_ping(
@@ -221,6 +273,9 @@ class SimulationController:
                             await manager.broadcast_to_trip(trip_id, msg)
 
                     await asyncio.sleep(tick)
+
+                if not route_switched:
+                    current_idx += 1
 
             # Cleanup: deactivate demo incident
             if incident_id:
@@ -250,9 +305,11 @@ class SimulationController:
             logger.error(f"Demo scenario error: {e}", exc_info=True)
         finally:
             self.active_tasks.pop(trip_id, None)
+            self.pending_routes.pop(trip_id, None)
             orchestrator.cleanup_trip(trip_id)
 
     def stop(self, trip_id: str):
+        self.pending_routes.pop(trip_id, None)
         task = self.active_tasks.pop(trip_id, None)
         if task:
             task.cancel()

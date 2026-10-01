@@ -18,6 +18,8 @@ export default function App() {
   const [incidentType, setIncidentType] = useState('accident');
   const [incidentSeverity, setIncidentSeverity] = useState('high');
 
+  const [selectedRouteIndex, setSelectedRouteIndex] = useState(null);
+
   const api = useApi();
   const ws = useWebSocket(activeTripId);
 
@@ -48,8 +50,14 @@ export default function App() {
 
   // Update alternative routes from WS
   useEffect(() => {
-    if (ws.messages.route_update?.alternatives) {
-      setAlternativeRoutes(ws.messages.route_update.alternatives);
+    if (ws.messages.route_update) {
+      if (ws.messages.route_update.alternatives) {
+        setAlternativeRoutes(ws.messages.route_update.alternatives);
+      }
+      if (ws.messages.route_update.selected && ws.messages.route_update.geometry) {
+        setPlannedRoute(ws.messages.route_update.geometry);
+        setAlternativeRoutes([]);
+      }
     }
   }, [ws.messages.route_update]);
 
@@ -78,6 +86,7 @@ export default function App() {
       setIsSimulating(false);
       setPositionTrail([]);
       setAlternativeRoutes([]);
+      setSelectedRouteIndex(null);
       // Extract planned route coords
       const routeCoords = res.planned_route_geojson?.route_coords || [];
       if (routeCoords.length > 0) {
@@ -125,6 +134,7 @@ export default function App() {
       setTripInfo(res);
       setPositionTrail([]);
       setAlternativeRoutes([]);
+      setSelectedRouteIndex(null);
       const routeCoords = res.planned_route_geojson?.route_coords || [];
       if (routeCoords.length > 0) {
         setPlannedRoute(routeCoords);
@@ -156,9 +166,29 @@ export default function App() {
     }
   };
 
-  const handleSelectRoute = (routeIndex) => {
-    console.log('Route selected:', routeIndex);
-    // In a full implementation, this would update the planned route
+  const handleSelectRoute = async (routeIndex) => {
+    if (!activeTripId) return;
+    const routes = ws.messages.recommendation?.routes || [];
+    const route = routes.find(r => r.index === routeIndex);
+    if (!route) {
+      console.warn('Selected route index not found in recommendations', routeIndex);
+      return;
+    }
+
+    try {
+      setSelectedRouteIndex(routeIndex);
+      await api.selectRoute(activeTripId, {
+        geometry: route.geometry,
+        distance: route.distance,
+        duration: route.duration,
+      });
+      if (route.geometry && route.geometry.length > 0) {
+        setPlannedRoute(route.geometry);
+      }
+      setAlternativeRoutes([]);
+    } catch (e) {
+      console.error('Failed to select route', e);
+    }
   };
 
   return (
@@ -202,6 +232,7 @@ export default function App() {
           messages={ws.messages}
           tripInfo={tripInfo}
           onSelectRoute={handleSelectRoute}
+          selectedRouteIndex={selectedRouteIndex}
         />
       </div>
     </div>

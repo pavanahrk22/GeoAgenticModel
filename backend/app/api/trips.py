@@ -4,9 +4,12 @@ from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
 import logging
 from app.db import get_db
-from app.models import Trip, Vehicle, VehicleType
-from app.schemas import TripCreate, TripResponse
+from app.models import Trip, Vehicle, VehicleType, TripStatus
+from app.schemas import TripCreate, TripResponse, SelectRouteRequest
 from app.services.routing_client import get_route
+from app.api.stream import manager
+from app.api.simulate import sim_controller
+from app.agents.orchestrator import orchestrator
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -99,3 +102,48 @@ async def get_trip(trip_id: str, db: AsyncSession = Depends(get_db)):
     if not trip:
         raise HTTPException(status_code=404, detail="Trip not found")
     return trip
+
+@router.post("/{trip_id}/select-route")
+async def select_route(trip_id: str, req: SelectRouteRequest, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(Trip).where(Trip.id == trip_id))
+    trip = result.scalar_one_or_none()
+    if not trip:
+        raise HTTPException(status_code=404, detail="Trip not found")
+
+    # Update trip's planned_route_geojson
+    planned_route = {
+        "type": "LineString",
+        "coordinates": [[c[1], c[0]] for c in req.geometry],
+        "route_coords": req.geometry,
+    }
+    trip.planned_route_geojson = planned_route
+    trip.baseline_eta_seconds = req.duration
+    trip.current_eta_seconds = req.duration
+    trip.status = TripStatus.active
+
+    await db.commit()
+    await db.refresh(trip)
+
+    # Signal running simulation to switch path
+    sim_controller.set_pending_route(trip_id, req.geometry)
+    orchestrator._last_trigger_progress.pop(trip_id, None)
+
+    # Broadcast route_update with selected: True
+    await manager.broadcast_to_trip(trip_id, {
+        "type": "route_update",
+        "data": {
+            "selected": True,
+            "geometry": req.geometry,
+            "distance": req.distance,
+            "duration": req.duration,
+            "alternatives": [],
+        }
+    })
+
+    return {
+        "status": "success",
+        "message": "Route selected successfully",
+        "trip_id": trip_id,
+        "distance": req.distance,
+        "duration": req.duration,
+    }

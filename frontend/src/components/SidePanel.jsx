@@ -2,7 +2,7 @@ import React from 'react';
 import AlertFeed from './AlertFeed';
 import { Navigation, Timer, Activity, TrendingUp, Gauge } from 'lucide-react';
 
-export default function SidePanel({ messages, tripInfo, onSelectRoute }) {
+export default function SidePanel({ messages, tripInfo, onSelectRoute, selectedRouteIndex }) {
   const { position, eta_update, alert, recommendation } = messages;
 
   const currentEta = eta_update?.current_eta_seconds || 0;
@@ -95,45 +95,63 @@ export default function SidePanel({ messages, tripInfo, onSelectRoute }) {
 
           {/* Route cards */}
           <div className="space-y-2">
-            {recommendation.routes.map((route, idx) => (
-              <div
-                key={idx}
-                className="bg-gray-800/80 p-3 rounded-lg border border-gray-700/50 hover:border-cyan-500/50 cursor-pointer transition-all group"
-                onClick={() => onSelectRoute(route.index)}
-              >
-                <div className="flex justify-between items-center mb-2">
-                  <div className="flex items-center gap-2">
-                    <div className="w-3 h-3 rounded-full" style={{ backgroundColor: route.color || '#f97316' }} />
-                    <span className="font-semibold text-sm text-gray-200">Route {idx + 1}</span>
-                  </div>
-                  <span className="text-xs font-mono bg-cyan-900/40 text-cyan-300 px-2 py-0.5 rounded">
-                    {(route.score || 0).toFixed(3)}
-                  </span>
-                </div>
-
-                <div className="flex gap-4 text-xs text-gray-400 font-mono mb-2">
-                  <span>⏱ {Math.round((route.duration || 0) / 60)}m</span>
-                  <span>📏 {((route.distance || 0) / 1000).toFixed(1)}km</span>
-                </div>
-
-                {/* Score breakdown bar */}
-                {route.score_breakdown && (
-                  <div className="flex h-1.5 rounded-full overflow-hidden bg-gray-700">
-                    <div className="bg-cyan-500" style={{ width: `${(route.score_breakdown.eta || 0) * 40}%` }} title="ETA" />
-                    <div className="bg-green-500" style={{ width: `${(route.score_breakdown.distance || 0) * 30}%` }} title="Distance" />
-                    <div className="bg-yellow-500" style={{ width: `${(route.score_breakdown.congestion_exposure || 0) * 20}%` }} title="Congestion" />
-                    <div className="bg-purple-500" style={{ width: `${(route.score_breakdown.incident_proximity || 0) * 10}%` }} title="Proximity" />
-                  </div>
-                )}
-
-                <button
-                  className="mt-2 w-full text-xs text-cyan-400 border border-cyan-500/30 rounded py-1 hover:bg-cyan-500/10 transition-colors opacity-0 group-hover:opacity-100"
-                  onClick={(e) => { e.stopPropagation(); onSelectRoute(route.index); }}
+            {recommendation.routes.map((route, idx) => {
+              const isSelected = selectedRouteIndex === route.index;
+              return (
+                <div
+                  key={idx}
+                  className={`p-3 rounded-lg border cursor-pointer transition-all group ${
+                    isSelected
+                      ? 'bg-cyan-950/60 border-cyan-400 ring-1 ring-cyan-500/50 shadow-[0_0_12px_rgba(6,182,212,0.25)]'
+                      : 'bg-gray-800/80 border-gray-700/50 hover:border-cyan-500/50'
+                  }`}
+                  onClick={() => onSelectRoute(route.index)}
                 >
-                  Select Route
-                </button>
-              </div>
-            ))}
+                  <div className="flex justify-between items-center mb-2">
+                    <div className="flex items-center gap-2">
+                      <div className="w-3 h-3 rounded-full" style={{ backgroundColor: route.color || '#f97316' }} />
+                      <span className="font-semibold text-sm text-gray-200">
+                        Route {idx + 1}
+                        {isSelected && (
+                          <span className="ml-2 text-[10px] bg-cyan-500/20 text-cyan-300 px-1.5 py-0.5 rounded font-mono border border-cyan-500/40">
+                            SELECTED
+                          </span>
+                        )}
+                      </span>
+                    </div>
+                    <span className="text-xs font-mono bg-cyan-900/40 text-cyan-300 px-2 py-0.5 rounded">
+                      {(route.score || 0).toFixed(3)}
+                    </span>
+                  </div>
+
+                  <div className="flex gap-4 text-xs text-gray-400 font-mono mb-2">
+                    <span>⏱ {Math.round((route.duration || 0) / 60)}m</span>
+                    <span>📏 {((route.distance || 0) / 1000).toFixed(1)}km</span>
+                  </div>
+
+                  {/* Score breakdown bar */}
+                  {route.score_breakdown && (
+                    <div className="flex h-1.5 rounded-full overflow-hidden bg-gray-700">
+                      <div className="bg-cyan-500" style={{ width: `${(route.score_breakdown.eta || 0) * 40}%` }} title="ETA" />
+                      <div className="bg-green-500" style={{ width: `${(route.score_breakdown.distance || 0) * 30}%` }} title="Distance" />
+                      <div className="bg-yellow-500" style={{ width: `${(route.score_breakdown.congestion_exposure || 0) * 20}%` }} title="Congestion" />
+                      <div className="bg-purple-500" style={{ width: `${(route.score_breakdown.incident_proximity || 0) * 10}%` }} title="Proximity" />
+                    </div>
+                  )}
+
+                  <button
+                    className={`mt-2 w-full text-xs rounded py-1 transition-all ${
+                      isSelected
+                        ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/50 font-semibold opacity-100'
+                        : 'text-cyan-400 border border-cyan-500/30 hover:bg-cyan-500/10 opacity-0 group-hover:opacity-100'
+                    }`}
+                    onClick={(e) => { e.stopPropagation(); onSelectRoute(route.index); }}
+                  >
+                    {isSelected ? '✓ Route Active' : 'Select Route'}
+                  </button>
+                </div>
+              );
+            })}
           </div>
 
           {/* Score legend */}

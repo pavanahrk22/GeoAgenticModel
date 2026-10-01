@@ -35,6 +35,7 @@ export function useApi() {
   const startSimulation = useCallback((tripId) => fetchApi('/simulate/start', { method: 'POST', body: JSON.stringify({ trip_id: tripId }) }), []);
   const stopSimulation = useCallback((tripId) => fetchApi('/simulate/stop', { method: 'POST', body: JSON.stringify({ trip_id: tripId }) }), []);
   const runScenario = useCallback((tripId) => fetchApi('/simulate/scenario', { method: 'POST', body: JSON.stringify({ trip_id: tripId }) }), []);
+  const selectRoute = useCallback((tripId, route) => fetchApi(`/trips/${tripId}/select-route`, { method: 'POST', body: JSON.stringify(route) }), []);
 
   return {
     loading,
@@ -46,6 +47,7 @@ export function useApi() {
     deleteIncident,
     startSimulation,
     stopSimulation,
-    runScenario
+    runScenario,
+    selectRoute
   };
 }

@@ -71,6 +71,11 @@ class TripResponse(BaseModel):
     class Config:
         from_attributes = True
 
+class SelectRouteRequest(BaseModel):
+    geometry: List[List[float]]
+    distance: float
+    duration: float
+
 class IncidentCreate(BaseModel):
     type: IncidentType
     lat: float

@@ -99,15 +99,7 @@ export default function MapView({
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
         />
 
-        {/* Planned route (blue dashed) */}
-        {routePositions.length > 1 && (
-          <Polyline
-            positions={routePositions}
-            pathOptions={{ color: '#3b82f6', weight: 4, opacity: 0.7, dashArray: '12, 8' }}
-          />
-        )}
-
-        {/* Alternative routes (colored) */}
+        {/* Alternative routes (colored, rendered underneath planned route) */}
         {alternativeRoutes && alternativeRoutes.map((alt, idx) => {
           const altPositions = (alt.geometry || []).map(c => {
             if (Array.isArray(c)) return [c[0], c[1]];
@@ -121,7 +113,7 @@ export default function MapView({
               pathOptions={{
                 color: alt.color || ['#f97316', '#22c55e', '#a855f7'][idx % 3],
                 weight: 4,
-                opacity: 0.8,
+                opacity: 0.7,
               }}
             >
               <Tooltip sticky>
@@ -135,6 +127,14 @@ export default function MapView({
             </Polyline>
           );
         })}
+
+        {/* Planned route - drawn ON TOP of alternatives with distinct color and weight */}
+        {routePositions.length > 1 && (
+          <Polyline
+            positions={routePositions}
+            pathOptions={{ color: '#2563eb', weight: 6, opacity: 0.95, dashArray: '10, 6' }}
+          />
+        )}
 
         {/* Position trail */}
         {positionTrail && positionTrail.length > 1 && (
